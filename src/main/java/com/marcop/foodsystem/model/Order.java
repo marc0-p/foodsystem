@@ -23,6 +23,8 @@ public class Order implements Comparable<Order> {
     private OrderState state;
     // Total cook time of the order (current system will only process an order if all the items can be started).
     private int totalCookTimeSeconds;
+    // Total price the order.
+    private int totalPriceCents;
 
     public Order(Timestamp orderedAt, String name, String service, List<OrderItem> orderItems) {
         this.orderedAt = orderedAt;
@@ -32,6 +34,11 @@ public class Order implements Comparable<Order> {
         this.processingStartedAt = null;
         this.completedAt = null;
         this.state = OrderState.CREATED;
+        this.totalCookTimeSeconds = 0;
+        this.totalPriceCents = 0;
+        for (OrderItem item : orderItems) {
+            totalPriceCents = totalPriceCents + item.getPriceCents();
+        }
     }
 
     /** Get orderedAt as a Timestamp. */
@@ -54,6 +61,14 @@ public class Order implements Comparable<Order> {
         return orderItems;
     }
 
+    /** Get item list size. */
+    public int getOrderItemsSize() {
+        if (orderItems ==  null || orderItems.isEmpty()) {
+            return 0;
+        }
+        return getOrderItems().size();
+    }
+
     /** Get processingStartedAt as a Timestamp. */
     public Timestamp getProcessingStartedAt() {
         return processingStartedAt;
@@ -74,6 +89,11 @@ public class Order implements Comparable<Order> {
         return totalCookTimeSeconds;
     }
 
+    /** Get total price. */
+    public int getTotalPriceCents() {
+        return totalPriceCents;
+    }
+
     /** Set processingStartedAt. */
     public void setProcessingStartedAt(Timestamp ts) {
         processingStartedAt = ts;
@@ -90,12 +110,13 @@ public class Order implements Comparable<Order> {
     }
 
     /** Set total cook time. */
-    public int setTotalCookTimeSeconds(int totalCookTimeSeconds) {
+    public void setTotalCookTimeSeconds(int totalCookTimeSeconds) {
         this.totalCookTimeSeconds = totalCookTimeSeconds;
     }
 
     @Override
     public int compareTo(Order anotherOrder) {
+        // Ignore transient fields such as state.
         int orderedAtCompare = anotherOrder.getOrderedAt().compareTo(orderedAt);
         if (orderedAtCompare != 0) {
             return orderedAtCompare;

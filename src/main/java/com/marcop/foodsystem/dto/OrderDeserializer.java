@@ -9,9 +9,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.marcop.foodsystem.model.Order;
+import com.marcop.foodsystem.model.OrderItem;
 
 import java.io.IOException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -35,7 +38,7 @@ public class OrderDeserializer extends StdDeserializer<Order> {
         JsonNode node = codec.readTree(parser);
 
         JsonNode orderedAtNode = node.get("ordered_at");
-        Timestamp orderedAt =  Timestamp.valueOf(orderedAtNode.asText());
+        Timestamp orderedAt =  Timestamp.valueOf(orderedAtNode.asText().replace('T', ' '));
 
         JsonNode nameNode = node.get("name");
         String name =  nameNode.asText();
@@ -43,11 +46,15 @@ public class OrderDeserializer extends StdDeserializer<Order> {
         JsonNode serviceNode = node.get("service");
         String service =  serviceNode.asText();
 
-        JsonNode itemsNode = node.get("items");
-        while (itemsNode.elements().hasNext()) {
-
+        Iterator<JsonNode> itemsNode = node.get("items").elements();
+        List<OrderItem> items = new ArrayList<>();
+        while (itemsNode.hasNext()) {
+            JsonNode itemNode = itemsNode.next();
+            OrderItemDto orderItemDto = MAPPER.treeToValue(itemNode, OrderItemDto.class);
+            if (orderItemDto != null) {
+                items.addAll(orderItemDto.toOrderItems());
+            }
         }
-
-        return new Order();
+        return new Order(orderedAt, name, service, items);
     }
 }

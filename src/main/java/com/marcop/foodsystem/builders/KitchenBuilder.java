@@ -34,6 +34,13 @@ public class KitchenBuilder {
         menusByName.put(menu.getName(), menu);
     }
 
+    /** Add a Menu to the Kitchen. This will enforce only one menu per name. */
+    public void addMenus(Set<Menu> menus) {
+        for (Menu menu : menus) {
+            menusByName.put(menu.getName(), menu);
+        }
+    }
+
     /** Set maxConcurentItems for the Kitchen */
     public void setMaxConcurrentItems(int maxConcurentItems) {
         this.maxConcurrentItems = maxConcurentItems;

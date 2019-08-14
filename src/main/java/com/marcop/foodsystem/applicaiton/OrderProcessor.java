@@ -1,13 +1,23 @@
 package com.marcop.foodsystem.applicaiton;
 
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.TreeMultimap;
 import com.marcop.foodsystem.builders.KitchenBuilder;
+import com.marcop.foodsystem.dto.KitchenMenuItemsDto;
+import com.marcop.foodsystem.dto.KitchenMenusDeserializer;
+import com.marcop.foodsystem.dto.OrderDeserializer;
 import com.marcop.foodsystem.indexing.KitchenMenuItemIndexes;
 import com.marcop.foodsystem.model.Kitchen;
 import com.marcop.foodsystem.model.Menu;
 import com.marcop.foodsystem.model.Order;
+import com.marcop.foodsystem.model.OrderItem;
 import com.marcop.foodsystem.model.OrderProcessingStrategy;
+import com.marcop.foodsystem.model.OrderState;
 import com.marcop.foodsystem.model.ProcessStats;
 import com.marcop.foodsystem.store.OrderInMemoryStore;
 import com.marcop.foodsystem.store.OrderStore;
@@ -17,9 +27,14 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.hadoop.fs.Path;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -47,6 +62,7 @@ public class OrderProcessor
     private static final String OPTION_OUTPUT_PATH = "output_path";
     private static final OrderProcessingStrategy DEFAULT_STRATEGY = OrderProcessingStrategy.FIRST_COME_FIRST_SERVE;
     private static final Logger LOGGER = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final Options OPTIONS = new Options()
             .addOption(
@@ -57,12 +73,11 @@ public class OrderProcessor
             .addOption("ip", OPTION_ORDER_INPUT_PATH, true, "Path to file containing orders to be processed.")
             .addOption("op", OPTION_OUTPUT_PATH, true, "Path for new output directory containing all outputs.");
 
-    public static void main( String[] args ) throws ParseException
+    public static void main( String[] args ) throws ParseException, IOException
     {
         CommandLine cmdLine = new GnuParser().parse(OPTIONS, args);
         Preconditions.checkArgument(
                 cmdLine.hasOption(OPTION_KITCHEN_NAME) &&
-                        cmdLine.hasOption(OPTION_KITCHEN_NAME) &&
                         cmdLine.hasOption(OPTION_ORDER_INPUT_PATH) &&
                         cmdLine.hasOption(OPTION_OUTPUT_PATH), "Missing required argument. See help.");
         String kitchenName = cmdLine.getOptionValue(OPTION_KITCHEN_NAME);
@@ -71,33 +86,76 @@ public class OrderProcessor
         int maxConcurrentItems = cmdLine.hasOption(OPTION_KITCHEN_MAX_CONCURRENT_ITEMS)
                 ? Integer.parseInt(cmdLine.getOptionValue(OPTION_KITCHEN_MAX_CONCURRENT_ITEMS)) : 0;
 
-        // Use utils to extract orders from JSON
-        List<Order> orders = new ArrayList<>();
+        // Extract orders from JSON
+        SimpleModule module =
+                new SimpleModule("OrderDeserializer", new Version(1, 0, 0, null, null, null));
+        module.addDeserializer(Order.class, new OrderDeserializer());
+        OBJECT_MAPPER.registerModule(module);
+        byte[] jsonOrderData = Files.readAllBytes(Paths.get(inputPath.toString()));
+        List<Order> orders = OBJECT_MAPPER.readValue(
+                jsonOrderData,
+                OBJECT_MAPPER.getTypeFactory().constructCollectionType(List.class, Order.class)
+        );
 
-        OrderStore completedOrders = runProcessing(kitchenName, maxConcurrentItems, orders, DEFAULT_STRATEGY);
+        OrderInMemoryStore completedOrders = new OrderInMemoryStore();
+        OrderInMemoryStore rejectedOrders = new OrderInMemoryStore();
+        runProcessing(kitchenName, maxConcurrentItems, orders, DEFAULT_STRATEGY, completedOrders, rejectedOrders);
 
         // Compute stats from completed orders.
+        // Get sorted Order price (cents) table
+        TreeMultimap<Integer, Order> ordersByPrice = completedOrders.getOrdersByPrice();
 
+        // Get sorted order state counts by time
+        Map<Timestamp, Map<OrderState, Integer>> orderStateCountsByTime = completedOrders.getOrderStateCountsByTime();
+
+        // Get revenue (cents) by item table
+        Map<String, Integer> revenueByItem = completedOrders.getRevenueByItem();
+
+        // Get revenue (cents) by service table
+        Map<String, Integer> revenueByService = completedOrders.getRevenueByService();
+
+        // Get total revenue (cents).
+        int totalRevenue = completedOrders.getTotalRevenue();
     }
 
     @VisibleForTesting
-    public static OrderStore runProcessing(String kitchenName, int maxConcurrentItems,
-                                     List<Order> orders, OrderProcessingStrategy strategy) {
+    public static void runProcessing(String kitchenName, int maxConcurrentItems,
+                                     List<Order> orders, OrderProcessingStrategy strategy,
+                                     OrderStore completedOrders, OrderStore rejectedOrders) throws IOException {
         ProcessStats processStats = new ProcessStats();
         LOGGER.info(String.format("Configuring Kitchen %s.", kitchenName));
+
+        // Get kitchen's menus from JSON resources
+        SimpleModule module =
+                new SimpleModule("KitchenDeserializer", new Version(1, 0, 0, null, null, null));
+        module.addDeserializer(KitchenMenuItemsDto.class, new KitchenMenusDeserializer());
+        OBJECT_MAPPER.registerModule(module);
+        byte[] jsonKitchenConfig = Files.readAllBytes(Paths.get("resources/kitchens.json"));
+        KitchenMenuItemsDto kitchenMenuItemsDto =
+                OBJECT_MAPPER.readValue(jsonKitchenConfig, KitchenMenuItemsDto.class);
+        Map<String, Set<Menu>> menusByKitchenName = kitchenMenuItemsDto.getMenusByKitchenName();
+
+        Preconditions.checkArgument(menusByKitchenName != null && menusByKitchenName.containsKey(kitchenName),
+                "The kitchen configuration specified, " + kitchenName + ", cannot be found");
+
+        Set<Menu> menus = kitchenMenuItemsDto.getMenusByKitchenName().get(kitchenName);
+        Preconditions.checkArgument(!menus.isEmpty(), "The kitchen, " + kitchenName + ", has no menus configured.");
+
         KitchenBuilder kitchenBuilder = new KitchenBuilder();
         kitchenBuilder.setName(kitchenName);
         kitchenBuilder.setMaxConcurrentItems(maxConcurrentItems);
-        List<Menu> menus = new ArrayList<>();
         // Get kitchen's menus from resources
+        List<String> menuNames = new ArrayList<>();
         for (Menu menu : menus) {
             kitchenBuilder.addMenu(menu);
+            menuNames.add(menu.getName());
         }
         Kitchen kitchen = kitchenBuilder.build();
         LOGGER.info(
                 String.format(
-                        "%s Kitchen has been launched with the following menus: %s,and max concurrent items = %s.",
-                        kitchenName, menus.toString(), maxConcurrentItems == 0 ? "INF" : maxConcurrentItems)
+                        "Kitchen %s has been launched with the following menus: %s. And max concurrent items = %s.",
+                        kitchenName, Joiner.on(',').join(menuNames),
+                        maxConcurrentItems == 0 ? "INF" : maxConcurrentItems)
         );
         LOGGER.info("Building Kitchen Indexes.");
         // Build index to lookup cook times.
@@ -107,10 +165,23 @@ public class OrderProcessor
         OrderInMemoryStore processingOrders = maxConcurrentItems > 0
                 ? new OrderInMemoryStore(maxConcurrentItems)
                 : new OrderInMemoryStore();
-        OrderInMemoryStore completedOrders = new OrderInMemoryStore();
 
         LOGGER.info("Adding new orders to pending queue");
         for (Order order : orders) {
+            if (order.getOrderedAt() == null) {
+                LOGGER.warning("Order rejected, since it is missing timestamp.");
+                order.updateState(OrderState.REJECTED);
+                rejectedOrders.addOrder(order);
+                continue;
+            }
+            if (order.getOrderItemsSize() == 0) {
+                LOGGER.warning("Order rejected, since it has no items.");
+                order.updateState(OrderState.REJECTED);
+                rejectedOrders.addOrder(order);
+                continue;
+            }
+            enrichOrderWithCookTimes(order, menuItemIndexes);
+            order.updateState(OrderState.CREATED);
             boolean orderAdded = pendingOrders.addOrder(order);
             if (!orderAdded) {
                 // This should not happen.
@@ -120,19 +191,50 @@ public class OrderProcessor
         LOGGER.info("Processing orders...");
         submitAndProcess(pendingOrders, processingOrders, completedOrders, strategy);
         LOGGER.info("All order processing complete.");
-        return completedOrders;
     }
 
+    /**
+     * Add item cook times, and total cook time to an order.
+     *
+     */
+    private static void enrichOrderWithCookTimes(Order order, KitchenMenuItemIndexes kitchenMenuItemIndexes) {
+        int maxCookTime = 0;
+        for (OrderItem item : order.getOrderItems()) {
+            int itemCookTime = kitchenMenuItemIndexes.getCookTime(item.getName());
+            item.setCookTimeSeconds(itemCookTime);
+            if (itemCookTime > maxCookTime) {
+                maxCookTime = itemCookTime;
+            }
+        }
+        order.setTotalCookTimeSeconds(maxCookTime);
+    }
+
+    /**
+     * Submit orders from pending queue to processing queue, until the processing queue can no longer accept.
+     * Then process orders until there is room to accept more. Keep repeating until all orders are completed.
+     */
     private static void submitAndProcess(OrderStore pendingOrders, OrderStore processingOrders,
                                          OrderStore completedOrders, OrderProcessingStrategy strategy) {
-        int totalOrders = pendingOrders.getCurrentNumOrders();
         Order orderToSubmit = pendingOrders.getAndDequeueOrder(strategy);
         // Start with first order's timestamp.
         Timestamp currentTime = orderToSubmit.getOrderedAt();
-        while (completedOrders.getCurrentNumOrders() < totalOrders) {
+        boolean getOrder = false;
+        while (pendingOrders.getCurrentNumOrders() > 0) {
+            // Submit all pending orders.
             boolean isOrderSubmitted = true;
             while (isOrderSubmitted) {
-                if (orderToSubmit.getOrderItems().size() > processingOrders.getMaxAllowedItems()) {
+                if (getOrder) {
+                    orderToSubmit = pendingOrders.getAndDequeueOrder(strategy);
+                    if (orderToSubmit == null) {
+                        break;
+                    }
+                    currentTime = orderToSubmit.getOrderedAt();
+                } else {
+                    // orderToSubmit in memory still needs to be submitted. Skip fetching a new order.
+                    getOrder = true;
+                }
+                if (orderToSubmit != null
+                        && orderToSubmit.getOrderItemsSize() > processingOrders.getMaxAllowedItems()) {
                     // Kitchens cannot process only part of an order at a time.
                     // As such it must be large enough to process all of the orders items at the same time.
                     throw new RuntimeException("Kitchen is too small to process this order. Item count = "
@@ -140,25 +242,38 @@ public class OrderProcessor
                 }
                 // Try to submit order for processing.
                 isOrderSubmitted = processingOrders.submitOrder(orderToSubmit, currentTime);
-                if (!isOrderSubmitted) {
-                    // Once a pending order cannot be moved to the process store, then start processing that store.
-                    processBatch(processingOrders, completedOrders, currentTime);
-                }
-                for (Order completedOrder : completedOrderBatch) {
-                    completedOrders.submitOrder(completedOrder);
-                }
             }
+            currentTime = processBatch(processingOrders, completedOrders, currentTime);
+            getOrder = false;
+        }
+        // Now that all orders have been submitted, finish processing remaining orders
+        while (processingOrders.getCurrentNumOrders() > 0) {
+            currentTime = processBatch(processingOrders, completedOrders, currentTime);
         }
     }
 
-    private static void processBatch(OrderStore processingOrders, OrderStore completedOrders, Timestamp startedAt) {
-        boolean endOfBatch = false;
-        while (processingOrders.getCurrentNumOrders() > 0 || !endOfBatch) {
-            List<Order> completedOrderBatch = processingOrders.clearFinishedOrders(currentTime);
-            elapsedTimeMinutes++;
-            for (Order completedOrder : completedOrderBatch) {
-                completedOrders.submitOrder(completedOrder);
+    /**
+     * For a given timestamp, clear all orders which would be complete by that time.
+     */
+    private static Timestamp processBatch(OrderStore processingOrders,
+                                          OrderStore completedOrders,
+                                          Timestamp startedAt) {
+        Timestamp queryTime = startedAt;
+        int minutesElapsed = 0;
+
+        while (processingOrders.getCurrentNumOrders() > 0) {
+            queryTime = new Timestamp(queryTime.getTime() + (minutesElapsed * 60 * 1000L));
+            List<Order> completedOrderBatch = processingOrders.clearFinishedOrders(queryTime);
+            if (!completedOrderBatch.isEmpty()) {
+                for (Order completedOrder : completedOrderBatch) {
+                    completedOrders.addOrder(completedOrder);
+                }
+                break;
+            } else {
+                // If no batch for query time, increment time.
+                minutesElapsed++;
             }
         }
+        return queryTime;
     }
 }

@@ -1,11 +1,13 @@
 package com.marcop.foodsystem.store;
 
+import com.google.common.collect.TreeMultimap;
 import com.marcop.foodsystem.model.ItemState;
 import com.marcop.foodsystem.model.Order;
 import com.marcop.foodsystem.model.OrderProcessingStrategy;
 import com.marcop.foodsystem.model.OrderState;
 
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,8 +24,8 @@ public interface OrderStore {
     // Remove an order from the order store and return it.
     Order getAndDequeueOrder(OrderProcessingStrategy strategy);
 
-    // Clear orders based on current time and items' cook times.
-    void clearFinishedOrders(Timestamp submitTime);
+    // Clear orders based on current time and items' cook times, returns list of completed orders (now removed).
+    List<Order> clearFinishedOrders(Timestamp submitTime);
 
     // Get number of orders in store.
     int getCurrentNumOrders();
@@ -34,18 +36,21 @@ public interface OrderStore {
     // Get maximum number of items in store orders
     int getMaxAllowedItems();
 
-    // Get reverse sorted Item frequency count
+    // Get Item frequency count
     Map<String, Integer> getItemFrequencyCount();
 
-    // Get reverse sorted Order price (cents) table
-    Map<Order, Integer> getOrdersByPrice();
+    // Get sorted Order price (cents) table
+    TreeMultimap<Integer, Order> getOrdersByPrice();
 
-    // Get order state counts by time
+    // Get sorted order state counts by time
     Map<Timestamp, Map<OrderState, Integer>> getOrderStateCountsByTime();
 
-    // Get item state counts by time
-    Map<Timestamp, Map<ItemState, Integer>> getItemStateCountsByTime();
-
-    // Get sorted item revenue (cents) table
+    // Get revenue (cents) by item table
     Map<String, Integer> getRevenueByItem();
+
+    // Get revenue (cents) by service table
+    Map<String, Integer> getRevenueByService();
+
+    // Get total revenue (cents).
+    int getTotalRevenue();
 }

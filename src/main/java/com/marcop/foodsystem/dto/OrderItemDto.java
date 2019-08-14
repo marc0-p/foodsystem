@@ -1,6 +1,10 @@
 package com.marcop.foodsystem.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.marcop.foodsystem.model.OrderItem;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class OrderItemDto {
     private String name;
@@ -30,5 +34,14 @@ public class OrderItemDto {
 
     void setPricePerUnitCents(int pricePerUnitCents) {
         this.pricePerUnitCents = pricePerUnitCents;
+    }
+
+    /** Convert to OrderItems (flat list, without quantity) */
+    public List<OrderItem> toOrderItems() {
+        List<OrderItem> orderItems = new ArrayList<>();
+        for (int i = 0; i < quantity; i++) {
+            orderItems.add(new OrderItem(name, pricePerUnitCents));
+        }
+        return orderItems;
     }
 }

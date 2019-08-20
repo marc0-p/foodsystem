@@ -18,12 +18,16 @@ public class OrderInMemoryStore implements OrderStore {
     private int currentNumOrders;
     private int currentNumItems;
     private TreeMultimap<Timestamp, Order> ordersByTime;
+    private Map<Timestamp, Map<OrderState, Integer>> orderStateCountsByTime;
+    private Timestamp firstModifiedAt;
+    private Timestamp lastModifiedAt;
 
     public OrderInMemoryStore(int maxAllowedItems) {
         this.maxAllowedItems = maxAllowedItems;
         currentNumOrders = 0;
         currentNumItems = 0;
         this.ordersByTime = TreeMultimap.create();
+        this.orderStateCountsByTime = new TreeMap<>();
     }
 
     // Use default max items allowed.
@@ -45,6 +49,9 @@ public class OrderInMemoryStore implements OrderStore {
             currentNumOrders++;
             currentNumItems += numItems;
         }
+        updateLastModifiedAt(submitTime);
+        incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.CREATED);
+        incrementStateCounters(orderStateCountsByTime, submitTime, OrderState.PROCESSING);
         return true;
     }
 
@@ -60,7 +67,50 @@ public class OrderInMemoryStore implements OrderStore {
             currentNumOrders++;
             currentNumItems += numItems;
         }
+        // Since addOrder can be used generically for different order states, different timestamp updates will result.
+        switch (order.getState()) {
+            case CREATED:
+                updateFirstModifiedAt(order.getOrderedAt());
+                incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.CREATED);
+                break;
+            case PROCESSING:
+                updateLastModifiedAt(order.getProcessingStartedAt());
+                incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.CREATED);
+                incrementStateCounters(orderStateCountsByTime, order.getProcessingStartedAt(), OrderState.PROCESSING);
+                break;
+            case COMPLETE:
+                updateLastModifiedAt(order.getCompletedAt());
+                incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.CREATED);
+                incrementStateCounters(orderStateCountsByTime, order.getProcessingStartedAt(), OrderState.PROCESSING);
+                incrementStateCounters(orderStateCountsByTime, order.getCompletedAt(), OrderState.COMPLETE);
+                break;
+            case REJECTED:
+                Timestamp orderedAt = order.getOrderedAt();
+                updateFirstModifiedAt(orderedAt);
+                updateLastModifiedAt(orderedAt);
+                incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.CREATED);
+                incrementStateCounters(orderStateCountsByTime, order.getOrderedAt(), OrderState.REJECTED);
+                break;
+            default:
+                break;
+        }
         return true;
+    }
+
+    /** Update firstModifiedAt if the timestamp is before this.firstModifiedAt */
+    private void updateFirstModifiedAt(Timestamp timestamp) {
+        if (firstModifiedAt == null || timestamp.before(firstModifiedAt)) {
+            // Update first modified time stamp.
+            firstModifiedAt = timestamp;
+        }
+    }
+
+    /** Update lastModifiedAt if the timestamp is after this.lastModifiedAt */
+    private void updateLastModifiedAt(Timestamp timestamp) {
+        if (lastModifiedAt == null || timestamp.after(lastModifiedAt)) {
+            // Update last modified time stamp.
+            lastModifiedAt = timestamp;
+        }
     }
 
     @Override
@@ -100,6 +150,7 @@ public class OrderInMemoryStore implements OrderStore {
                             // update store status counters
                             currentNumOrders--;
                             currentNumItems -= order.getOrderItemsSize();
+                            updateLastModifiedAt(doneTime);
                         }
                     }
                 }
@@ -154,44 +205,6 @@ public class OrderInMemoryStore implements OrderStore {
 
     @Override
     public Map<Timestamp, Map<OrderState, Integer>> getOrderStateCountsByTime(){
-        Map<Timestamp, Map<OrderState, Integer>> orderStateCountsByTime = new TreeMap<>();
-        // Get first time stamp
-        Timestamp firstTimeStamp = ordersByTime.keySet().first();
-        Timestamp currentTime;
-        Iterator<Order> orderItr = ordersByTime.values().iterator();
-        while (orderItr.hasNext()) {
-            Order order = orderItr.next();
-            currentTime = firstTimeStamp;
-            boolean orderStatesFullyIngested = false;
-            boolean orderedAtIngested = false;
-            boolean processingStartedAtIngested = false;
-            boolean completedAtIngested = false;
-
-            while (!orderStatesFullyIngested) {
-                Timestamp orderedAt = order.getOrderedAt();
-                Timestamp processingStartedAt = order.getProcessingStartedAt();
-                Timestamp completedAt = order.getCompletedAt();
-
-                if (!orderedAtIngested && !currentTime.before(orderedAt)) {
-                    // Check orderedAt
-                    incrementStateCounters(orderStateCountsByTime, orderedAt, OrderState.CREATED);
-                    orderedAtIngested = true;
-                }
-                if (!processingStartedAtIngested && !currentTime.before(order.getProcessingStartedAt())) {
-                    // Check processing start time
-                    incrementStateCounters(orderStateCountsByTime, processingStartedAt, OrderState.PROCESSING);
-                    processingStartedAtIngested = true;
-                }
-                if (!completedAtIngested && !currentTime.before(order.getCompletedAt())) {
-                    // Check completed start time
-                    incrementStateCounters(orderStateCountsByTime, completedAt, OrderState.COMPLETE);
-                    completedAtIngested = true;
-                }
-                orderStatesFullyIngested = orderedAtIngested && processingStartedAtIngested && completedAtIngested;
-                // Increment time by one minute.
-                currentTime = new Timestamp(currentTime.getTime() + (60 * 1000L));
-            }
-        }
         return orderStateCountsByTime;
     }
 

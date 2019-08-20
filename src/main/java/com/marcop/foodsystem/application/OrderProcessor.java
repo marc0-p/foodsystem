@@ -1,4 +1,4 @@
-package com.marcop.foodsystem.applicaiton;
+package com.marcop.foodsystem.application;
 
 import com.fasterxml.jackson.core.Version;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +8,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.TreeMultimap;
 import com.marcop.foodsystem.builders.KitchenBuilder;
+import com.marcop.foodsystem.charts.ChartUtils;
 import com.marcop.foodsystem.dto.KitchenMenuItemsDto;
 import com.marcop.foodsystem.dto.KitchenMenusDeserializer;
 import com.marcop.foodsystem.dto.OrderDeserializer;
@@ -18,7 +19,6 @@ import com.marcop.foodsystem.model.Order;
 import com.marcop.foodsystem.model.OrderItem;
 import com.marcop.foodsystem.model.OrderProcessingStrategy;
 import com.marcop.foodsystem.model.OrderState;
-import com.marcop.foodsystem.model.ProcessStats;
 import com.marcop.foodsystem.store.OrderInMemoryStore;
 import com.marcop.foodsystem.store.OrderStore;
 import org.apache.commons.cli.CommandLine;
@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+
+import static com.marcop.foodsystem.charts.ChartUtils.STATS_PAGE_FILE_NAME;
 
 /**
  * OrderProcessor - Given a list of orders, simulates preparing those orders, and computes various metrics.
@@ -116,13 +118,30 @@ public class OrderProcessor
 
         // Get total revenue (cents).
         int totalRevenue = completedOrders.getTotalRevenue();
+
+        // Get rejected order count
+        int rejectedOrderCount = rejectedOrders.getCurrentNumOrders();
+
+        // Create Stats Page
+        LOGGER.info("Creating Stats Page.");
+        ChartUtils.createStatsPage(
+                kitchenName,
+                maxConcurrentItems,
+                ordersByPrice,
+                orderStateCountsByTime,
+                revenueByItem,
+                revenueByService,
+                totalRevenue,
+                rejectedOrderCount,
+                outputPath);
+        LOGGER.info(String.format("Stats page location: %s.", new Path(outputPath, STATS_PAGE_FILE_NAME).toString()));
+        LOGGER.info("Application is complete.");
     }
 
     @VisibleForTesting
     public static void runProcessing(String kitchenName, int maxConcurrentItems,
                                      List<Order> orders, OrderProcessingStrategy strategy,
                                      OrderStore completedOrders, OrderStore rejectedOrders) throws IOException {
-        ProcessStats processStats = new ProcessStats();
         LOGGER.info(String.format("Configuring Kitchen %s.", kitchenName));
 
         // Get kitchen's menus from JSON resources

@@ -62,6 +62,15 @@ OrderStore: This is a data access layer for orders and stats, and is the core of
 OrderInMemoryStore: This implementation of an OrderStore is purely in-memory.  It is not intended to scale.  This is a proof-of-concept.
                     For an enterprise system, there would be an implementation of OrderStore backed by an enterprise-level storage solution.
 
+### Design for Stats
+
+The idea for this design, is that the OrderStore has all of the information needed to generate any stats required.
+(E.g. entity state change history).  Furthermore, generally stats should be updated rather than computed.
+
+But since the API for retrieving the stats is part of the store, is doesn't make a difference to the caller.
+
+For an enterprise scale solution, the API would need additional features, such as pagination, which are not included now.
+
 ### Application
 
 OrderProcessor: This is the main application.

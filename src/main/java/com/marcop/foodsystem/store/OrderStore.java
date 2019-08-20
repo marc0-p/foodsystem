@@ -42,6 +42,9 @@ public interface OrderStore {
     // Get sorted Order price (cents) table
     TreeMultimap<Integer, Order> getOrdersByPrice();
 
+    // Get sorted Order pending time (minutes) table
+    TreeMultimap<Integer, Order> getOrdersByPendingDuration();
+
     // Get sorted order state counts by time
     Map<Timestamp, Map<OrderState, Integer>> getOrderStateCountsByTime();
 

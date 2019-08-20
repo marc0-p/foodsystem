@@ -179,7 +179,7 @@ public class OrderInMemoryStore implements OrderStore {
     }
 
     @Override
-    public Map<String, Integer> getItemFrequencyCount(){
+    public Map<String, Integer> getItemFrequencyCount() {
         Map<String, Integer> itemCounts = new HashMap<>();
         for (Order order : ordersByTime.values()) {
             for (OrderItem item : order.getOrderItems()) {
@@ -195,7 +195,7 @@ public class OrderInMemoryStore implements OrderStore {
     }
 
     @Override
-    public TreeMultimap<Integer, Order> getOrdersByPrice(){
+    public TreeMultimap<Integer, Order> getOrdersByPrice() {
         TreeMultimap<Integer, Order> ordersByPrice = TreeMultimap.create();
         for (Order order : ordersByTime.values()) {
             ordersByPrice.put(order.getTotalPriceCents(), order);
@@ -204,7 +204,26 @@ public class OrderInMemoryStore implements OrderStore {
     }
 
     @Override
-    public Map<Timestamp, Map<OrderState, Integer>> getOrderStateCountsByTime(){
+    public TreeMultimap<Integer, Order> getOrdersByPendingDuration() {
+        TreeMultimap<Integer, Order> ordersByPendingDuration = TreeMultimap.create();
+        for (Order order : ordersByTime.values()) {
+            if (order.getState() != OrderState.COMPLETE && order.getState() != OrderState.PROCESSING) {
+                // skip orders not relevant.
+                continue;
+            }
+
+            long milliseconds1 = order.getOrderedAt().getTime();
+            long milliseconds2 = order.getProcessingStartedAt().getTime();
+            long diff = milliseconds2 - milliseconds1;
+            int pendingTimeMinutes = (int) (diff / (60 * 1000));
+
+            ordersByPendingDuration.put(pendingTimeMinutes, order);
+        }
+        return ordersByPendingDuration;
+    }
+
+    @Override
+    public Map<Timestamp, Map<OrderState, Integer>> getOrderStateCountsByTime() {
         return orderStateCountsByTime;
     }
 

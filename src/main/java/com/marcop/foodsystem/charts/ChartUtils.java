@@ -42,6 +42,7 @@ public class ChartUtils {
 
     // File name constants
     private static final String ordersByPriceFileName = "charts/orders_by_price.png";
+    private static final String ordersByPendingTimeFileName = "charts/orders_by_pending_time.png";
     private static final String revenueByServiceFileName = "charts/revenue_by_service.png";
     private static final String revenueByItemFileName = "csv/revenue_by_item.csv";
     private static final String orderStatesOverTimeFileName = "charts/order_states_over_time.png";
@@ -84,6 +85,35 @@ public class ChartUtils {
                 false
         );
         outputPath = new Path(outputPath, ordersByPriceFileName);
+        File outFile = new File(outputPath.toString());
+        outFile.getParentFile().mkdirs();
+        outFile.createNewFile();
+        saveChartAsPNG(outFile, chart, 640, 480);
+    }
+
+    /** Create chart (PNG) for Orders by pending duration. */
+    private static void createOrderByPendingTime(TreeMultimap<Integer, Order> ordersByPendingTime,
+                                                Path outputPath) throws IOException {
+        XYSeries series = new XYSeries("Time Order is in Pending State (minutes)");
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        int orderNumber = 1;
+        for (Map.Entry entry : ordersByPendingTime.entries()) {
+            series.add(orderNumber, ((Integer) entry.getKey()));
+            orderNumber++;
+        }
+        dataset.addSeries(series);
+
+        JFreeChart chart = ChartFactory.createXYLineChart(
+                "Time Order is in Pending State (minutes)",
+                "Orders",
+                "Pending State Duration (minutes)",
+                dataset,
+                PlotOrientation.VERTICAL,
+                true,
+                true,
+                false
+        );
+        outputPath = new Path(outputPath, ordersByPendingTimeFileName);
         File outFile = new File(outputPath.toString());
         outFile.getParentFile().mkdirs();
         outFile.createNewFile();
@@ -200,6 +230,7 @@ public class ChartUtils {
             String kitchenName,
             int maxConcurrentItems,
             TreeMultimap<Integer, Order> ordersByPrice,
+            TreeMultimap<Integer, Order> ordersByPendingTime,
             Map<Timestamp, Map<OrderState, Integer>> orderStateCountsByTime,
             Map<String, Integer> revenueByItem,
             Map<String, Integer> revenueByService,
@@ -207,6 +238,7 @@ public class ChartUtils {
             int rejectedOrderCount,
             Path outputPath) throws IOException {
         createOrderByPriceChart(ordersByPrice, outputPath);
+        createOrderByPendingTime(ordersByPendingTime, outputPath);
         createOrderStateCountsByTimeChart(orderStateCountsByTime, outputPath);
         createRevenueByServiceChart(revenueByService, outputPath);
 
@@ -238,6 +270,7 @@ public class ChartUtils {
             // Charts
             htmlTxt += "<h2>Charts</h2>";
             htmlTxt+="<p><img src=\"" + ordersByPriceFileName + "\"></p>";
+            htmlTxt+="<p><img src=\"" + ordersByPendingTimeFileName + "\"></p>";
             htmlTxt+="<p><img src=\"" + revenueByServiceFileName + "\"></p>";
             htmlTxt+="<p><img src=\"" + orderStatesOverTimeFileName + "\"></p>";
 

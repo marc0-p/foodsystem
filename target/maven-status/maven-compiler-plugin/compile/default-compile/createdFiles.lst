@@ -1,4 +1,3 @@
-com/marcop/foodsystem/model/ProcessStats.class
 com/marcop/foodsystem/store/OrderInMemoryStore.class
 com/marcop/foodsystem/dto/OrderDeserializer.class
 com/marcop/foodsystem/builders/KitchenBuilder.class

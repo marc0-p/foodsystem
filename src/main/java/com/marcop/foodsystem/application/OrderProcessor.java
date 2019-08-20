@@ -107,6 +107,9 @@ public class OrderProcessor
         // Get sorted Order price (cents) table
         TreeMultimap<Integer, Order> ordersByPrice = completedOrders.getOrdersByPrice();
 
+        // Get sorted Order pending time table
+        TreeMultimap<Integer, Order> ordersByPendingTime = completedOrders.getOrdersByPendingDuration();
+
         // Get sorted order state counts by time
         Map<Timestamp, Map<OrderState, Integer>> orderStateCountsByTime = completedOrders.getOrderStateCountsByTime();
 
@@ -128,6 +131,7 @@ public class OrderProcessor
                 kitchenName,
                 maxConcurrentItems,
                 ordersByPrice,
+                ordersByPendingTime,
                 orderStateCountsByTime,
                 revenueByItem,
                 revenueByService,

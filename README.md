@@ -22,10 +22,10 @@ The main application is called OrderProcessor.  This app will process a set of o
 The command to run the app is (from the foodsystem repo root dir):
 java -jar target/foodsystem-1.0-SNAPSHOT-manual.jar
 args:
--kmc <number of concurrent items allowed to process>
--kn <kitchen name.. use testKitchen, since it is the only kitchen configured>
--ip <input path to orders JSON file>
--op <output path for stats>
+- -kmc number of concurrent items allowed to process
+- -kn kitchen name.. use testKitchen, since it is the only kitchen configured
+- -ip input path to orders JSON file
+- -op output path for stats
 
 An example command is:
 java -jar target/foodsystem-1.0-SNAPSHOT-manual.jar -kmc 20 -kn testKitchen -ip /Users/mp/orderdata/orders.json -op /Users/mp/orderdata/output/stats
@@ -41,18 +41,18 @@ Running the application will produce the following output.
 
 ### Logical Data Model
 
-Kitchen: An entity representing a physical kitchen configuration.
-Menu: A list of items which can be prepared, and belong to a certain subset. Also attributes which describe the subset.
-MenuItem: An item which can be ordered and/or prepared by a Kitchen (includes attributes such as cook time).
-Order: Represents a food order, which has a list of items, and other attributes.
-OrderItem: An item associated with an order, and appropriate attributes (e.g. price paid).
-OrderProcessingStrategy: An enum describing how orders should be processed (e.g. First come, first serve)
-OrderState: State of the order, e.g. PROCESSING, COMPLETE, etc.
-ItemState: State of the OrderItem e.g. PROCESSING, COMPLETE, etc.
+- Kitchen: An entity representing a physical kitchen configuration.
+- Menu: A list of items which can be prepared, and belong to a certain subset. Also attributes which describe the subset.
+- MenuItem: An item which can be ordered and/or prepared by a Kitchen (includes attributes such as cook time).
+- Order: Represents a food order, which has a list of items, and other attributes.
+- OrderItem: An item associated with an order, and appropriate attributes (e.g. price paid).
+- OrderProcessingStrategy: An enum describing how orders should be processed (e.g. First come, first serve)
+- OrderState: State of the order, e.g. PROCESSING, COMPLETE, etc.
+- ItemState: State of the OrderItem e.g. PROCESSING, COMPLETE, etc.
 
-A Kitchen has 1:n Menus
-A Menu has 1:n MenuItems
-An Order has 1:n OrderItems
+- A Kitchen has 1:n Menus
+- A Menu has 1:n MenuItems
+- An Order has 1:n OrderItems
 
 ### Store
 

@@ -37,6 +37,16 @@ Running the application will produce the following output.
 - Charts as PNG files
 - Tables as raw CSV files
 
+### Included Stats
+
+- Number of orders completed
+- Number of orders rejected (usually this is due to zero items, or missing timestamp).
+- Total Revenue
+- Distribution of Orders by price
+- Distribution of Orders by time in pending state
+- Revenue by Service
+- Revenue by Item
+
 ## System design
 
 ### Logical Data Model
